@@ -1,11 +1,11 @@
 
 class Agent(object):
     
-    NAME = "default_agent"
+    NAME = "AgentB"
     SHARED_KNOWLEDGE = None # call with Agent.shared_knowledge not self.shared...!
     PRIOR_KNOWLEDGE = None
     AMMOLOCS = {}
-    
+
     def __init__(self, id, team, settings=None, field_rects=None, field_grid=None, nav_mesh=None, blob=None, **kwargs):
         """ Each agent is initialized at the beginning of each game.
             The first agent (id==0) can use this to set up global variables.
@@ -19,21 +19,12 @@ class Agent(object):
         self.settings = settings
         self.goal = None
         self.callsign = '%s-%d'% (('BLU' if team == TEAM_BLUE else 'RED'), id)
-        
-        
-        # Read the binary blob
-        if blob is not None:
-            print "Agent %s received binary blob of %s" % (
-               self.callsign, type(pickle.loads(blob.read())))
-            blob.seek(0)
-            Agent.PRIOR_KNOWLEDGE = pickle.load(blob)
-            print Agent.PRIOR_KNOWLEDGE
-            blob.seek(0) 
-        
+        self.blobpath = None        
+
         # Recommended way to share variables between agents. 
         if id == 0:
             self.all_agents = self.__class__.all_agents = []
-        self.all_agents.append(self)
+            self.all_agents.append(self)
     
     def observe(self, observation):
         """ Each agent is passed an observation using this function,
@@ -57,46 +48,56 @@ class Agent(object):
         # Check if agent reached goal.
         if self.goal is not None and point_dist(self.goal, obs.loc) < self.settings.tilesize:
             self.goal = None
-            
-        # Walk to ammo
-        ammopacks = filter(lambda x: x[2] == "Ammo", obs.objects)
-        if ammopacks:
-            self.goal = ammopacks[0][0:2]
-            # Register visible ammo
-            for ammopack in ammopacks:
-                loc = ammopack[0:2]
-                #available = Agent.AMMOLOCS.get(loc, _)
-                Agent.AMMOLOCS[loc] = 1
-            
-        # Register missing ammo (ammo appears to bee seen even at max_see + 14 ?)
-        max_see = self.settings.max_see
-        visibleSpawnPoint = []
-        for k in Agent.AMMOLOCS.keys():
-            if abs(k[0]-obs.loc[0]) <= max_see and (abs(k[1]-obs.loc[1]) <= max_see): #if agent sees ammo spawn point
-                visibleSpawnPoint.append(k)
-            visibleAmmo = [loc[0:2] for loc in ammopacks]
-            emptySpawnPoints = set(visibleSpawnPoint).difference(visibleAmmo)
-            for esp in emptySpawnPoints:
-                Agent.AMMOLOCS[esp] = 0
-                
-
-        # Drive to where the user clicked
-        # Clicked is a list of tuples of (x, y, shift_down, is_selected)
-        if self.selected and self.observation.clicked:
-            self.goal = self.observation.clicked[0][0:2]
-
-        # Walk to random CP
-        if self.goal is None:
-            self.goal = obs.cps[random.randint(0,len(obs.cps)-1)][0:2]
         
-        # Shoot enemies
-        shoot = False
-        if (obs.ammo > 0 and 
-            obs.foes and 
-            point_dist(obs.foes[0][0:2], obs.loc) < self.settings.max_range and
-            not line_intersects_grid(obs.loc, obs.foes[0][0:2], self.grid, self.settings.tilesize)):
-            self.goal = obs.foes[0][0:2]
-            shoot = True
+#        print "Agent %s ammo: %s" %(self.id ,obs.ammo)
+            
+        # # Walk to ammo
+        # ammopacks = filter(lambda x: x[2] == "Ammo", obs.objects)
+        # if ammopacks:
+        #     self.goal = ammopacks[0][0:2]
+        #     # Register visible ammo
+        #     for ammopack in ammopacks:
+        #         loc = ammopack[0:2]
+        #         #available = Agent.AMMOLOCS.get(loc, _)
+        #         Agent.AMMOLOCS[loc] = 1
+            
+        # # Register missing ammo (ammo appears to bee seen even at max_see + 14 ?)
+        # max_see = self.settings.max_see
+        # visibleSpawnPoint = []
+        # for k in Agent.AMMOLOCS.keys():
+        #     if abs(k[0]-obs.loc[0]) <= max_see and (abs(k[1]-obs.loc[1]) <= max_see): #if agent sees ammo spawn point
+        #         visibleSpawnPoint.append(k)
+        #     visibleAmmo = [loc[0:2] for loc in ammopacks]
+        #     emptySpawnPoints = set(visibleSpawnPoint).difference(visibleAmmo)
+        #     for esp in emptySpawnPoints:
+        #         Agent.AMMOLOCS[esp] = 0
+    
+        # # Drive to where the user clicked
+        # # Clicked is a list of tuples of (x, y, shift_down, is_selected)
+        # if self.selected and self.observation.clicked:
+        #     self.goal = self.observation.clicked[0][0:2]
+
+        # # Walk to random CP
+        # if self.goal is None:
+        #     for cp in obs.cps:
+        #         self.goal = cp[0:2] #TODO: change is something usefull!!
+        
+
+        if self.id == 0:
+            self.goal = (152, 136)
+
+        if self.id == 1:
+            self.goal = (312, 136)
+
+        if self.id == 2: 
+            pathLength = float('inf')
+            for cp in obs.cps:
+                if cp[2] != self.team: 
+                    path = find_path(obs.loc, cp[0:2], self.mesh, self.grid, self.settings.tilesize)
+                    print path
+                    if len(path) < pathLength:
+                        pathLength = len(path)
+                        self.goal = cp[0:2]
 
         # Compute path, angle and drive
         path = find_path(obs.loc, self.goal, self.mesh, self.grid, self.settings.tilesize)
@@ -104,15 +105,31 @@ class Agent(object):
             dx = path[0][0] - obs.loc[0]
             dy = path[0][1] - obs.loc[1]
             turn = angle_fix(math.atan2(dy, dx) - obs.angle)
+            speed = (dx**2 + dy**2)**0.5
             if turn > self.settings.max_turn or turn < -self.settings.max_turn:
                 shoot = False
-            speed = (dx**2 + dy**2)**0.5
+                speed = 0
         else:
             turn = 0
             speed = 0
-        
-        import time
-        time.sleep(0.59) # TODO: delete!
+
+        # # Shoot enemies
+        shoot = False
+        if obs.ammo > 0 and obs.foes:
+            for foe in obs.foes: 
+                if point_dist(foe[0:2], obs.loc) < self.settings.max_range and not line_intersects_grid(obs.loc, foe[0:2], self.grid, self.settings.tilesize):
+                    dx = foe[0] - obs.loc[0]
+                    dy = foe[1] - obs.loc[1]
+                    turn = angle_fix(math.atan2(dy, dx) - obs.angle)
+                    if turn > self.settings.max_turn or turn < -self.settings.max_turn:
+                        shoot = False
+                    else:
+                        shoot = True
+
+
+       # #make steps last a little longer (for debugging only!)
+       # import time
+       # time.sleep(0.59) 
 
         return (turn,speed,shoot)
         
@@ -133,15 +150,11 @@ class Agent(object):
             if self.goal is not None:
                 pygame.draw.line(surface,(0,0,0),self.observation.loc, self.goal)
         
+
     def finalize(self, interrupted=False):
-        """ This function is called after the game ends, 
+        """ This function is called after the game ends,
             either due to time/score limits, or due to an
             interrupt (CTRL+C) by the user. Use it to
             store any learned variables and write logs/reports.
-        """
-        Agent.PRIOR_KNOWLEDGE += 1 #just for testing
-        blob = open("domination/agentB_blob" , "wb") #TODO: make path dynamical!!
-        pickle.dump(Agent.PRIOR_KNOWLEDGE, blob)
-        
-        pass
-        
+            """
+
