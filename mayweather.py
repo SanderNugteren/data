@@ -1,11 +1,14 @@
 import math
+import copy
 
 class Agent(object):
     
     NAME = "mayweather"
     SHARED_KNOWLEDGE = [] # call with Agent.shared_knowledge not self.shared...!
     PRIOR_KNOWLEDGE = None
-    AMMOLOCS = {}
+    STATE = None
+    AMMOLOCS = []
+    CPS = []
 
     def __init__(self, id, team, settings=None, field_rects=None, field_grid=None, nav_mesh=None, blob=None, **kwargs):
         """ Each agent is initialized at the beginning of each game.
@@ -26,7 +29,7 @@ class Agent(object):
             self.blobpath = blob.name
             Agent.PRIOR_KNOWLEDGE = pickle.load(blob)
         elif self.id == 0: #create a distance dict   
-            pois = [(152, 136), (312, 136), (216, 56), (248, 216)]
+            pois = [(184, 168), (312, 104), (232, 56), (264, 216)]
             distances = {}
             for i in range(len(field_grid)):
                 for j in range(len(field_grid[i])):
@@ -57,7 +60,7 @@ class Agent(object):
                         distances[(j, i)] = dist
             Agent.PRIOR_KNOWLEDGE = distances
             try:
-                blobfile = open('domination/AgentB_blob', 'wb')
+                blobfile = open('domination/' + Agent.NAME + '_blob', 'wb')
                 pickle.dump(Agent.PRIOR_KNOWLEDGE, blobfile, pickle.HIGHEST_PROTOCOL)
             except:
                 print "Agent %s can't write blob." % self.callsign
@@ -72,10 +75,12 @@ class Agent(object):
 
 
     def action(self):
-        """ This function is called every step and should
-            return a tuple in the form: (turn, speed, shoot)
-        """
+
         obs = self.observation
+
+        if self.id == 0:
+            self.getState()
+
         # Check if agent reached goal.
         if self.goal is not None and point_dist(self.goal, obs.loc) < self.settings.tilesize:
             self.goal = None 
@@ -96,14 +101,14 @@ class Agent(object):
         #     for cp in obs.cps:
         #         self.goal = cp[0:2] #TODO: change is something usefull!!
         
-        ammoloc1 = (152, 136)
-        ammoloc2 = (312, 136)
+        ammoloc1 = (184, 168)
+        ammoloc2 = (312, 104)
 
         if self.id == 0:
-            self.goal = (152, 136)
+            self.goal = ammoloc1
 
         if self.id == 1:
-            self.goal = (312, 136)
+            self.goal = ammoloc2
 
         if self.id == 2: 
             self.goal = obs.loc
@@ -142,11 +147,6 @@ class Agent(object):
                     else:
                         shoot = True
 
-        # for testing the distance function
-        if self.id == 0 and obs.step == 1:
-            self.goal = ((152, 136))
-            print self.distance(obs.loc, obs.angle)
-
         # #make steps last a little longer (for debugging only!)
         # import time
         # time.sleep(0.59) 
@@ -159,7 +159,6 @@ class Agent(object):
         x = loc[0]/16
         y = loc[1]/16
         distances = []
-        print Agent.PRIOR_KNOWLEDGE[(x,y)]
         for d in Agent.PRIOR_KNOWLEDGE[(x, y)]:
             steps = d[0]
             turn = angle_fix(d[1] - angle)
@@ -167,7 +166,18 @@ class Agent(object):
             distances.append(steps)
         return distances
 
-        
+    def getState(self):
+        # State = [[distances A0], ammo A0, ...An, [CP control]]
+        # What about ammo spawn time, current score?
+        state = []
+        for agent in Agent.SHARED_KNOWLEDGE:
+            state.append(self.distance(agent.observation.loc, agent.observation.angle))
+            state.append(agent.observation.ammo > 0)
+        state.append([x[2] for x in Agent.SHARED_KNOWLEDGE[0].observation.cps])
+        print state
+        return state
+
+
     def debug(self, surface):
         """ Allows the agents to draw on the game UI,
             Refer to the pygame reference to see how you can
@@ -193,4 +203,23 @@ class Agent(object):
             store any learned variables and write logs/reports.
         """
         pass   
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
