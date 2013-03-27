@@ -14,6 +14,7 @@ class Agent(object):
     EPSILON = 0.2
     GAMMA = 0.9
     ALPHA = 0.3
+    PRIOR_KNOWLEDGE["max_dist"] = 1.0
 
 
     def __init__(self, id, team, settings=None, field_rects=None, field_grid=None, nav_mesh=None, blob=None, **kwargs):
@@ -32,13 +33,13 @@ class Agent(object):
         self.blobpath = None
         self.prevState = None
         self.prevAction = None  
-        self.max_dist = 1
         self.started = 1
         # self.randomAction = False
 
         # Read the binary blob
         if blob is not None and self.id == 0:
             self.blobpath = blob.name
+            print self.blobpath
             Agent.PRIOR_KNOWLEDGE = pickle.load(blob)
         elif self.id == 0: #create a distance dict   
             pois = Agent.AMMOLOCS + Agent.CPS
@@ -77,10 +78,9 @@ class Agent(object):
                 for j in range(len(field_grid[i])):
                     if field_grid[i][j] == 0:
                         for d in Agent.PRIOR_KNOWLEDGE["distances"][(j, i)]:
-                            if d[0] > self.max_dist:
-                                self.max_dist = d[0]
-            print self.max_dist
-            self.max_dist += math.floor(abs(math.pi)/float(self.settings.max_turn))
+                            if d[0] > Agent.PRIOR_KNOWLEDGE["max_dist"]:
+                                Agent.PRIOR_KNOWLEDGE["max_dist"] = d[0]
+            Agent.PRIOR_KNOWLEDGE["max_dist"] += math.floor(abs(math.pi)/float(self.settings.max_turn))
             try:
                 blobfile = open('domination/' + Agent.NAME + '_blob', 'wb')
                 pickle.dump(Agent.PRIOR_KNOWLEDGE, blobfile, pickle.HIGHEST_PROTOCOL)
@@ -114,8 +114,13 @@ class Agent(object):
             if self.id == 2:
                 self.goal = Agent.CPS[1]
 
-        beta = self.distance(obs.loc, obs.angle) / self.max_dist
+        pois = Agent.AMMOLOCS + Agent.CPS
+        beta = self.distance(obs.loc, obs.angle)[pois.index(self.goal)] / Agent.PRIOR_KNOWLEDGE["max_dist"] - 0.2
+        #print "maxdist: ", Agent.PRIOR_KNOWLEDGE["max_dist"]
+        #print "beta: ", beta
         new_action = random.randint(0,1) < beta
+        if new_action:
+            print "new action"
 
         # Check if agent reached goal.
         if (self.goal is not None and point_dist(self.goal, obs.loc) < self.settings.tilesize) or new_action:
@@ -162,24 +167,23 @@ class Agent(object):
                     else:
                         shoot = True
 
-        print self.goal
         return (turn,speed,shoot)
 
     #---------------------------------------------------------------------------------------
 
     def getReward(self, state):
         reward = 0
-        for a in range(len(agent.SHARED_KNOWLEDGE)):
+        for a in range(len(Agent.SHARED_KNOWLEDGE)):
             reward += state[a+1]*5
         reward += sum(state[6:8])*15
         return reward
 
     def Qlearn(self, state, k):
-        Qtable = Agent.PRIOR_KNOWLEDGE["Q-table"]
+        #Qtable = Agent.PRIOR_KNOWLEDGE["Q-table"]
         r = self.getReward(state)
         if self.prevState != None:
             action = self.getAction(state, 0)
-            Qtable[self.prevState][self.prevAction] += Agent.ALPHA * (r + math.pow(Agent.GAMMA, k) * Qtable[state][action] - Qtable[self.prevState][self.prevAction])
+            Agent.PRIOR_KNOWLEDGE["Q-table"][self.prevState][self.prevAction] += Agent.ALPHA * (r + math.pow(Agent.GAMMA, k) * Agent.PRIOR_KNOWLEDGE["Q-table"][state][action] - Agent.PRIOR_KNOWLEDGE["Q-table"][self.prevState][self.prevAction])
 
     def getAction(self, state, epsilon):
         # print Agent.PRIOR_KNOWLEDGE["Q-table"]
@@ -266,7 +270,8 @@ class Agent(object):
             store any learned variables and write logs/reports.
         """
         try:
-            blobfile = open('domination/' + Agent.NAME + '_blob', 'wb')
+            #blobfile = open('domination/' + Agent.NAME + '_blob', 'wb')
+            blobfile = open('../data/' + Agent.NAME + '_blob', 'wb')
             pickle.dump(Agent.PRIOR_KNOWLEDGE, blobfile, pickle.HIGHEST_PROTOCOL)
         except:
             print "Agent %s can't write blob." % self.callsign
