@@ -36,29 +36,32 @@ w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w
 """
 FIELD = core.Field.from_string(FIELD2)
 
-runs = 10
-avg = 0
-avgR = 0
-for i in xrange(runs):
-    print i
-    #test
-    r_init = {}
-    r_init["beta"] = 10
-    # Initialize a game
-    game = core.Game('../data/scotty.py','domination/agent.py',
-        record=False, rendered=False, settings=settings, field=FIELD, red_init=r_init, verbose=False)
-    # Will run the entire game.
-    game.run()
-    stats = game.stats
-    #print "score red: " + str(stats.score_red)
-    #print "score red/total: " + str(stats.score)
-    avg += stats.score
-    avgR += stats.score_red
-    
-print "score: " + str(avg/runs)
-print "red score: " + str(avgR/runs)
+runs = 1000 #maybe make this into convergence
+#opponents we will be playing (hope the ordering is from easy to difficult here)
+opponents = ['agent',
+    #'Vasili_IIv8',
+    #'KillerQueen_v5',
+    #'HardCoded_v2'
+    ]
 
-# And now let's see the replay!
-#replay = game.replay
-#playback = core.Game(replay=replay)
-#playback.run()
+for op in opponents:
+    avg = 0
+    avgR = 0
+    f = open('../data/results/results'+op,'wb')
+    path = '../data/adversaries/'+op+'.py'
+    for i in xrange(runs):
+        print op + ' ' + str(i)
+        #test
+        r_init = {}
+        #r_init["beta"] = 10
+        # Initialize a game
+        game = core.Game('../data/scotty.py', path,
+            record=False, rendered=False, settings=settings, field=FIELD, red_init=r_init, verbose=False)
+        # Will run the entire game.
+        game.run()
+        stats = game.stats
+        #print "score red: " + str(stats.score_red)
+        #print "score red/total: " + str(stats.score)
+        avg = (i*avg + stats.score)/(i+1)
+        avgR = (i*avgR + stats.score_red)/(i+1)
+        f.write(str(stats.score) + ',' + str(avg) + '\n')
